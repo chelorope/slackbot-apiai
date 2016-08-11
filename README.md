@@ -1,1 +1,1 @@
-# slackbot-wit
+# slackbot-apiai

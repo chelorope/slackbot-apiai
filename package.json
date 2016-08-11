@@ -1,0 +1,28 @@
+{
+  "name": "slackbot-apiai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chelorope/slackbot-apiai.git"
+  },
+  "keywords": [
+    "slackbot"
+  ],
+  "author": "chelorope",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chelorope/slackbot-apiai/issues"
+  },
+  "homepage": "https://github.com/chelorope/slackbot-apiai#readme",
+  "dependencies": {
+    "@slack/client": "^3.5.4",
+    "botkit": "^0.2.2",
+    "node-wit": "^4.0.0",
+    "slack-client": "^2.0.6"
+  }
+}

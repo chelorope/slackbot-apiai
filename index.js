@@ -1,12 +1,11 @@
 // const {Wit, log} = require('node-wit');
-var env = require('node-env-file');
 const Botkit = require('botkit');
 var apiai = require('apiai');
-env('./.env')
+var env = require('./env.json')
 
 //API.AI---------------
 
-var app = apiai(process.env.APIAI_USER_TOKEN);
+var app = apiai(env.apiai.USER_TOKEN);
 
 //BOTKIT--------------
 
@@ -18,7 +17,7 @@ var controller = Botkit.slackbot({
 
 // connect the bot to a stream of messages
 controller.spawn({
-  token: process.env.SLACK_USER_TOKEN,
+  token: env.slack.USER_TOKEN,
 }).startRTM()
 
 

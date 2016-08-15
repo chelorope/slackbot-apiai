@@ -1,10 +1,12 @@
 // const {Wit, log} = require('node-wit');
+var env = require('node-env-file');
 const Botkit = require('botkit');
 var apiai = require('apiai');
+env('./.env')
 
 //API.AI---------------
 
-var app = apiai("12c811c806aa4f388ca221980cf3bb4a");
+var app = apiai(process.env.APIAI_USER_TOKEN);
 
 //BOTKIT--------------
 
@@ -16,8 +18,9 @@ var controller = Botkit.slackbot({
 
 // connect the bot to a stream of messages
 controller.spawn({
-  token: 'xoxb-68187915027-JCXdwNCzUDYYVyIm1JbnVGEH',
+  token: process.env.SLACK_USER_TOKEN,
 }).startRTM()
+
 
 // give the bot something to listen for.
 // controller.hears('hello',['direct_message','direct_mention','mention'],function(bot,message) {
@@ -32,11 +35,16 @@ controller.spawn({
 // reply to a direct mention - @bot hello ------
 controller.on('direct_mention',function(bot,message) {
   // reply to _message_ by using the _bot_ object
+  console.log(message);
   var request = app.textRequest(message.text);
 
   request.on('response', function(response) {
-      bot.reply(message,"Action:  " + response.result.action + "\n Answer:  " + response.result.fulfillment.speech);
-      console.log(response.result);
+      bot.reply(message,
+        "Parameters:  " + JSON.stringify(response.result.parameters) +
+        "\nAction:  " + response.result.action +
+        "\n Answer:  " + response.result.fulfillment.speech
+      );
+      console.log(response);
   });
   request.end()
 
@@ -45,11 +53,16 @@ controller.on('direct_mention',function(bot,message) {
 controller.on('direct_message',function(bot,message) {
   // reply to _message_ by using the _bot_ object
   // bot.reply(message,'You are talking directly to me');
+  console.log(message);
   var request = app.textRequest(message.text);
 
   request.on('response', function(response) {
-      bot.reply(message,"Action:  " + response.result.action + "\n Answer:  " + response.result.fulfillment.speech);
-      console.log(response.result);
+      bot.reply(message,
+        "Parameters:  " + JSON.stringify(response.result.parameters) +
+        "\nAction:  " + response.result.action +
+        "\n Answer:  " + response.result.fulfillment.speech
+      );
+      console.log(response);
   });
   request.end()
 });

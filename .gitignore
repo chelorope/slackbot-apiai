@@ -38,3 +38,7 @@ jspm_packages
 
 # Environment variables
 env.json
+client_secret.json
+
+#imges
+img/

@@ -41,4 +41,4 @@ env.json
 client_secret.json
 
 #imges
-img/
+img/*.*

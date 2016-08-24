@@ -8,15 +8,15 @@ const cal = require('./calendar.js');
 const express = require('express');
 const fs = require('fs');
 const chokidar = require('chokidar');
+const request = require('request');
 var SU = require('node-slack-upload');
-var slackUploadTest = new SU(env.slack.USER_TOKEN);
-var slackUploadJam3 = new SU(env.slack.USER_TOKEN1);
 var Calendar = new cal;
 
 //API.AI---------------
 const botkitapiai = apiaibotkit(env.apiai.USER_TOKEN);
 //API.AI con botkit
 const apiai = ai(env.apiai.USER_TOKEN);
+
 
 //BOTKIT--------------
 //MESSENGER BOTKIT-----------------------
@@ -36,11 +36,11 @@ var controllerSlack = Botkit.slackbot({
 });
 
 // connect the bot to a stream of messages
-var slack = controllerSlack.spawn({
+var slackTest = controllerSlack.spawn({
   token: env.slack.USER_TOKEN,
 }).startRTM()
 
-var slackCool = controllerSlack.spawn({
+var slack = controllerSlack.spawn({
   token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
 }).startRTM()
 
@@ -65,9 +65,32 @@ var slackCool = controllerSlack.spawn({
 
 Calendar.init();
 
-function requestUserName(hash) {
+//REQUESTS TO SLACK API-------------------------
+function getSlackTeam(teamName) {
+  console.log(teamName);
+  switch (teamName) {
+    case "T1ZKD6M38":
+      return {control: slackTest, token: env.slack.USER_TOKEN};
+      break;
+    case "T026JTKEW":
+      return {control: slack, token: env.slack.USER_TOKEN1};
+      break;
+  }
+};
+function requestUserName(hash, team) {
   return new Promise(function(resolve, reject) {
-    slack.api.users.info({user: hash}, function(err, response) {
+    getSlackTeam(team).control.api.users.info({user: hash}, function(err, response) {
+      if(err) {
+        reject(err);
+      }else {
+        resolve({hash: hash, data: response});
+      }
+    });
+  })
+};
+function requestFileInfo(hash, team) {
+  return new Promise(function(resolve, reject) {
+    getSlackTeam(team).control.api.files.info({file: hash}, function(err, response) {
       if(err) {
         reject(err);
       }else {
@@ -77,112 +100,180 @@ function requestUserName(hash) {
   })
 };
 
+//USER-MATCHING REGEXPS---------------------
 var findUsrsInTextRE = RegExp(/<@\w*?>/g);
 var findUsrInArrayRE = RegExp(/<@\w*?>/);
 var getHashFromUsrRE = RegExp(/\w+/);
+
+function replaceUsers(users, message, bot) {
+  //Translates the matched hash into a name
+  let usrPromises = users.map((usr) => (
+    requestUserName(usr.match(getHashFromUsrRE)[0], message.team)
+  ));
+  //Resolves all promises after the last one arrives
+  Promise.all(usrPromises)
+    .then(function(result) {
+      result.map(function(item) {
+        message.text = message.text.replace(
+          RegExp('<@' + item.hash + '>'),
+          item.data.user.name
+        );
+      });
+      handleMessage(bot,message, result);
+    })
+    .catch(function(err) {
+      console.log(err)
+    })
+};
 
 var images = fs.readdirSync('img');
 function getMatchArray(imgs) {
   var arr = [findUsrsInTextRE];
   imgs.map((img) => {
-    img.replace('_', ' ').split('.')[0] ? arr.push(img.replace('_', ' ').split('.')[0]) : '';
+    if (img.split('.')[0]) {
+      arr.push(img.replace(/_/g, ' ').split('.')[0])
+    }
   });
   arr.push('.*');
   return arr;
 };
+
+//WATCHIG FOR CHANGES ON img/ FOLDER-----------------
 var matchArray = getMatchArray(images);
 var watcher = chokidar.watch('img', { persistent: true });
 watcher
   .on('change', function(path) {
-    console.log('File Added');
+    console.log('img/ folder has changed');
     images = fs.readdirSync('img');
     matchArray = getMatchArray(images);
   })
+  // 
+  // class Index {
+  //
+  //   constructor() {
+  //
+  //   }
+  //
+  // }
+  // module.exports = Index;
 
+//SLACK HEARS---------------------------
 controllerSlack.hears(
   matchArray,
   ['direct_message','direct_mention','mention','ambient'],
   function(bot,message) {
+
  /* Creates an array with all the matched users and then
     substitutes them by their names in the message        */
     uploadMatchedImage(bot, message);
     if (message.event !== "ambient") {
       var users = message.match.filter(m => (findUsrInArrayRE.test(m)));
       if (users.length > 0) {
-        //Translates the matched hash into a name
-        let usrPromises = users.map((usr) => (
-          requestUserName(usr.match(getHashFromUsrRE)[0])
-        ));
-        //Resolves all promises after the last one arrives
-        Promise.all(usrPromises)
-          .then(function(result) {
-            result.map(function(item) {
-              message.text = message.text.replace(
-                RegExp('<@' + item.hash + '>'),
-                item.data.user.name
-              );
-            });
-            handleMessage(bot,message, result);
-          })
-          .catch(function(err) {
-            console.log(err)
-          })
+        replaceUsers(users, message, bot);
       }else {
         //If there's no users in the message
-        handleMessage(bot,message);
+        // console.log(message)                    //DELETE
+        botkitapiai.process(message, bot);
+        // handleMessage(bot,message);
       }
     }
   }
 );
 
-
-function handleMessage(bot, message, users) {
-  console.log(message);
-  botkitapiai.process(message, bot);
-
-  botkitapiai
-    .action('calendar.get', function (message, resp, bot) {
-        Calendar.listEvents();
-        var responseText = resp.result.fulfillment.speech;
-        bot.reply(message, responseText);
-    })
-
-  console.log("TEXT: " + message.text); //DELETE
-
-  var request = apiai.textRequest(message.text);
-  request.on('response', function(response) {
-      bot.reply(message,
-        "Parameters:  " + JSON.stringify(response.result.parameters) +
-        "\nAction:  " + response.result.action +
-        "\n Answer:  " + response.result.fulfillment.speech
-      );
-      console.log(response);// DELETE
-  });
-  request.end()
+//SLACK CATCHIG SHARED FILE-----------------------------
+var triggerFilesObj = {
+  waitingUpload: false,
+  trigger: '',
+  channel: '',
+  team: '',
+  user: '',
+  reset: function() {
+    this.waitingUpload = false;
+    this.trigger = '';
+    this.channel = '';
+    this.team = '';
+    this.user = '';
+  }
 }
+controllerSlack.on('file_shared', function(bot, message) {
+  if (triggerFilesObj.waitingUpload && message.user_id === triggerFilesObj.user) {
+    requestFileInfo(message.file.id, triggerFilesObj.team)
+      .then(function(obj) {
+        request
+          .get(obj.data.file.url_private, function(error, response, body) {
+              if (error) {
+                console.log('ERROR:   ', error);
+              }else {
+                let auxMessage = {
+                  type: 'message',
+                  channel: triggerFilesObj.channel,
+                  user: triggerFilesObj.user,
+                  text: 'Image Uploaded',
+                  team: triggerFilesObj.team,
+                  event: 'direct_message'
+                };
+                botkitapiai.process(auxMessage , bot);
+                triggerFilesObj.reset();
+              }
+            })
+          .auth(null, null, true, getSlackTeam(triggerFilesObj.team).token)
+          .pipe(fs.createWriteStream('img/' + triggerFilesObj.trigger.replace(/ /g, '_') + '.' + obj.data.file.name.split('.')[1]))
+      })
+      .catch(function(err) {
+        console.log(err);
+      })
+    }
+})
+// function handleMessage(bot, message, users) {
+//   // console.log('MESSAGE:   ', message); //DELETE
+//
+//   // console.log("TEXT: " + message.text); //DELETE
+//
+//   var request = apiai.textRequest(message.text);
+//   request.on('response', function(response) {
+//       bot.reply(message,
+//         "Parameters:  " + JSON.stringify(response.result.parameters) +
+//         "\nAction:  " + response.result.action +
+//         "\n Answer:  " + response.result.fulfillment.speech
+//       );
+//       // console.log(response);// DELETE
+//   });
+//   request.end()
+// }
+
+//API.AI EVENTS---------------------------------
+botkitapiai
+  .action('calendar.get', function (message, resp, bot) {
+      Calendar.listEvents();
+      var responseText = resp.result.fulfillment.speech;
+      bot.reply(message, responseText);
+  })
+  .action('newTriggerImage', function (message, resp, bot) {
+    let contexts = resp.result.contexts;
+    // console.log(resp.result); // DELETE
+    if (contexts.length > 0 && contexts[contexts.length - 1].name === "upload-image_dialog_params_image-uploaded") {
+      triggerFilesObj.trigger = resp.result.resolvedQuery
+      triggerFilesObj.waitingUpload = true
+      triggerFilesObj.channel = message.channel
+      triggerFilesObj.team = message.team
+      triggerFilesObj.user = message.user
+    }
+  })
+  .all(function (message, resp, bot) {
+    bot.reply(message, resp.result.fulfillment.speech)
+  })
 
 // EXTRA----------------------------------
-
-function getSlackUpload(teamName) {
-  switch (teamName) {
-    case "T1ZKD6M38":
-      return slackUploadTest;
-      break;
-    case "T026JTKEW":
-      return slackUploadJam3;
-      break;
-  }
-};
 
 var catchImgName = '';
 function getImage(message, images) {
   for (var i = 0; i < images.length; i++) {
-    catchImgName = images[i].replace('_', ' ').split('.');
+    catchImgName = images[i].replace(/_/g, ' ').split('.');
     for (var j = 0, matches = message.match; j < matches.length; j++) {
       if (catchImgName[0] === matches[j]) {
         return {
           'data': fs.createReadStream('img/' + images[i]),
-          'tittle': catchImgName[0],
+          'title': catchImgName[0],
           'filetype': catchImgName[1]
         }
       }
@@ -195,7 +286,8 @@ var image = {};
 function uploadMatchedImage(bot, message) {
   image = getImage(message, images);
   if (image) {
-    getSlackUpload(message.team).uploadFile({
+    let slackUpload = new SU(getSlackTeam(message.team).token);
+    slackUpload.uploadFile({
         file: image.data,
         filetype: image.fileType,
         title: image.title,
@@ -205,7 +297,9 @@ function uploadMatchedImage(bot, message) {
             console.error(err);
         }
         else {
-            console.log('File Uploaded to ', message.channel);
+          console.log('File "', image.title, '" uploaded to ', message.channel);
+          //garbage collector?
+          slackUpload = null;
         }
     });
   }

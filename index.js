@@ -66,20 +66,20 @@ var slack = controllerSlack.spawn({
 Calendar.init();
 
 //REQUESTS TO SLACK API-------------------------
-function getSlackTeam(teamName) {
+function getSlackToken(teamName) {
   console.log(teamName);
   switch (teamName) {
     case "T1ZKD6M38":
-      return {control: slackTest, token: env.slack.USER_TOKEN};
+      return env.slack.USER_TOKEN;
       break;
     case "T026JTKEW":
-      return {control: slack, token: env.slack.USER_TOKEN1};
+      return env.slack.USER_TOKEN1;
       break;
   }
 };
-function requestUserName(hash, team) {
+function requestUserName(hash, bot) {
   return new Promise(function(resolve, reject) {
-    getSlackTeam(team).control.api.users.info({user: hash}, function(err, response) {
+    bot.api.users.info({user: hash}, function(err, response) {
       if(err) {
         reject(err);
       }else {
@@ -88,9 +88,9 @@ function requestUserName(hash, team) {
     });
   })
 };
-function requestFileInfo(hash, team) {
+function requestFileInfo(hash, bot) {
   return new Promise(function(resolve, reject) {
-    getSlackTeam(team).control.api.files.info({file: hash}, function(err, response) {
+    bot.api.files.info({file: hash}, function(err, response) {
       if(err) {
         reject(err);
       }else {
@@ -108,7 +108,7 @@ var getHashFromUsrRE = RegExp(/\w+/);
 function replaceUsers(users, message, bot) {
   //Translates the matched hash into a name
   let usrPromises = users.map((usr) => (
-    requestUserName(usr.match(getHashFromUsrRE)[0], message.team)
+    requestUserName(usr.match(getHashFromUsrRE)[0], bot)
   ));
   //Resolves all promises after the last one arrives
   Promise.all(usrPromises)
@@ -147,7 +147,7 @@ watcher
     images = fs.readdirSync('img');
     matchArray = getMatchArray(images);
   })
-  // 
+  //
   // class Index {
   //
   //   constructor() {
@@ -197,7 +197,7 @@ var triggerFilesObj = {
 }
 controllerSlack.on('file_shared', function(bot, message) {
   if (triggerFilesObj.waitingUpload && message.user_id === triggerFilesObj.user) {
-    requestFileInfo(message.file.id, triggerFilesObj.team)
+    requestFileInfo(message.file.id, bot)
       .then(function(obj) {
         request
           .get(obj.data.file.url_private, function(error, response, body) {
@@ -216,7 +216,7 @@ controllerSlack.on('file_shared', function(bot, message) {
                 triggerFilesObj.reset();
               }
             })
-          .auth(null, null, true, getSlackTeam(triggerFilesObj.team).token)
+          .auth(null, null, true, getSlackToken(triggerFilesObj.team))
           .pipe(fs.createWriteStream('img/' + triggerFilesObj.trigger.replace(/ /g, '_') + '.' + obj.data.file.name.split('.')[1]))
       })
       .catch(function(err) {
@@ -265,8 +265,9 @@ botkitapiai
 
 // EXTRA----------------------------------
 
-var catchImgName = '';
+
 function getImage(message, images) {
+  var catchImgName = '';
   for (var i = 0; i < images.length; i++) {
     catchImgName = images[i].replace(/_/g, ' ').split('.');
     for (var j = 0, matches = message.match; j < matches.length; j++) {
@@ -282,11 +283,10 @@ function getImage(message, images) {
   return '';
 };
 
-var image = {};
 function uploadMatchedImage(bot, message) {
-  image = getImage(message, images);
+  var image = getImage(message, images);
   if (image) {
-    let slackUpload = new SU(getSlackTeam(message.team).token);
+    let slackUpload = new SU(getSlackToken(message.team));
     slackUpload.uploadFile({
         file: image.data,
         filetype: image.fileType,

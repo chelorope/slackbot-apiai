@@ -27,10 +27,10 @@ controllerSlack.spawn({
 }).startRTM()
 
 
-Slack = new S(controllerSlack);
-ApiAi = new A(botkitApiAi);
+var Slack = new S(controllerSlack);
+var ApiAi = new A(botkitApiAi);
 Slack.setMatchArray(getMatchArray());
-Slack.startHearing(ApiAi.handleMessage);
+Slack.startHearing(ApiAi.sendBot.bind(ApiAi));
 Slack.addEventListener('file_shared', function(bot, message) {
   if (Slack.isWaitingForFile(message.user_id)) {
     var queuedObj = Slack.getWaitingForFile(message.user_id);
@@ -75,13 +75,15 @@ ApiAi.addAllActionsListener(function (message, resp, bot) {
 
 
 //WATCHIG FOR CHANGES ON img/ FOLDER-----------------
+var findUsrsInTextRE = RegExp(/<@\w*?>/g);
 function getMatchArray() {
-  var arr = [findUsrsInTextRE];
+  var arr = [];
   fs.readdirSync('img').map((img) => {
     if (img.split('.')[0]) {
       arr.push(img.replace(/_/g, ' ').split('.')[0])
     }
   });
+  arr.push(findUsrsInTextRE);
   arr.push('.*');
   return arr;
 };

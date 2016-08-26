@@ -14,7 +14,6 @@ class Slack {
     this.waitingForFile = new Map();
     this.matchArray = [];
   }
-
   addEventListener(event, callback) {
     this.controllerSlack.on(event, callback);
   }
@@ -32,7 +31,6 @@ class Slack {
       }.bind(this)
     );
   }
-
   sendToConversation(message, text, bot) {
     bot.reply(message, text)
   }

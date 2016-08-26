@@ -13,8 +13,7 @@ const S = require('./slack.js');
 
 
 //API.AI---------------
-const botkitApiAi = apiaibotkit(env.apiai.USER_TOKEN);
-
+const botApiAi = apiaibotkit(env.apiai.USER_TOKEN);
 var controllerSlack = Botkit.slackbot({
   debug: false //or from 1 to 7 for debuging
 });
@@ -22,46 +21,33 @@ var controllerSlack = Botkit.slackbot({
 controllerSlack.spawn({
   token: env.slack.USER_TOKEN,
 }).startRTM()
-controllerSlack.spawn({
-  token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
-}).startRTM()
-
+// controllerSlack.spawn({
+//   token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
+// }).startRTM()
 
 var Slack = new S(controllerSlack);
-var ApiAi = new A(botkitApiAi);
 Slack.setMatchArray(getMatchArray());
-Slack.startHearing(ApiAi.sendBot.bind(ApiAi));
+Slack.startHearing(botApiAi.process);
 Slack.addEventListener('file_shared', function(bot, message) {
-  if (Slack.isWaitingForFile(message.user_id)) {
-    var queuedObj = Slack.getWaitingForFile(message.user_id);
-    Slack.removeWaitingForFile(message.user_id);
-    Slack.requestFileInfo(message.file.id, bot)
-      .then(function(fileInfo) {
-        Slack.getFileFromURL(queuedObj, fileInfo)
-          .then(function(obj){
-            let auxMessage = {
-              type: 'message',
-              channel: obj.channel,
-              user: obj.user,
-              text: 'Image Uploaded',
-              team: obj.team,
-              event: 'direct_message'
-            };
-            ApiAi.sendBot(auxMessage, bot);
-          })
-      })
-      .catch(function(err) {
-        console.log(err);
-      })
-    }
+  Slack.getSharedFile(bot, message, function(fileInfo) {
+    let auxMessage = {
+      type: 'message',
+      channel: fileInfo.channel,
+      user: fileInfo.user,
+      text: 'Image Uploaded',
+      team: fileInfo.team,
+      event: 'direct_message'
+    };
+    botApiAi.process(auxMessage, bot);
+  });
 })
 
-ApiAi.addActionListener('newTriggerImage', function (message, resp, bot) {
+botApiAi.action('newTriggerImage', function (message, resp, bot) {
   let contexts = resp.result.contexts;
   // console.log(resp.result); // DELETE
   if (contexts.length > 0 && contexts[contexts.length - 1].name === "upload-image_dialog_params_image-uploaded") {
-    Slack.addWaitingForFile({
-      trigger: resp.result.resolvedQuery,
+    Slack.addWaitingForFile(message.user, {
+      trigger: resp.result.resolvedQuery.toLowerCase(),
       channel: message.channel,
       team: message.team,
       user: message.user
@@ -69,10 +55,9 @@ ApiAi.addActionListener('newTriggerImage', function (message, resp, bot) {
   }
 });
 
-ApiAi.addAllActionsListener(function (message, resp, bot) {
+botApiAi.all(function(message, resp, bot) {
   Slack.sendToConversation(message, resp.result.fulfillment.speech, bot);
 })
-
 
 //WATCHIG FOR CHANGES ON img/ FOLDER-----------------
 var findUsrsInTextRE = RegExp(/<@\w*?>/g);
@@ -80,7 +65,7 @@ function getMatchArray() {
   var arr = [];
   fs.readdirSync('img').map((img) => {
     if (img.split('.')[0]) {
-      arr.push(img.replace(/_/g, ' ').split('.')[0])
+      arr.push(RegExp(img.replace(/_/g, ' ').split('.')[0],'i'));
     }
   });
   arr.push(findUsrsInTextRE);
@@ -104,7 +89,7 @@ chokidar.watch('img', { persistent: true })
 
 
 
-  // ApiAi.addActionListener('calendar.get', function (message, resp, bot) {
+  // botApiAi.action('calendar.get', function (message, resp, bot) {
   //     Calendar.listEvents();
   //     var responseText = resp.result.fulfillment.speech;
   //     bot.reply(message, responseText);

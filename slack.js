@@ -12,18 +12,24 @@ class Slack {
   constructor(controller) {
     this.controllerSlack = controller;
     this.waitingForFile = new Map();
-    this.matchArray = [];
+    this.matchArray = getMatchArray();
+
+    chokidar.watch('img/', { persistent: true })
+      .on('change', function(path) {
+        console.log('img/ folder has changed');
+        fileNames = fs.readdirSync('img');
+        this.matchArray = getMatchArray();
+      })
   }
-  addEventListener(event, callback) {
-    this.controllerSlack.on(event, callback);
+  addEventListener(evnt, callback) {
+    this.controllerSlack.on(evnt, callback);
   }
   startHearing(messageHandler) {
     this.controllerSlack.hears(
       this.matchArray,
       ['direct_message','direct_mention','mention','ambient'],
       function(bot,message) {
-        console.log(message.match);
-        uploadMatchedImage(bot, message);
+        uploadMatchedFile(bot, message);
         if (message.event !== "ambient") {
           message = replaceUsers(bot, message);
           messageHandler(message, bot);
@@ -33,9 +39,6 @@ class Slack {
   }
   sendToConversation(message, text, bot) {
     bot.reply(message, text)
-  }
-  setMatchArray(array) {
-    this.matchArray = array;
   }
   addWaitingForFile(user, newWaiter) {
     this.waitingForFile.set(user, newWaiter);
@@ -59,20 +62,27 @@ class Slack {
             .then(function(obj){
               callBack(obj);
             })
+            .catch(function(err) {
+              console.log(err);
+            })
         })
         .catch(function(err) {
           console.log(err);
         })
-      }
+    }
   }
 }
 module.exports = Slack;
 
-//PRIVATE FUNCTIONS-----------------------
+//PRIVATE ATTRIBUTES-----------------------
 
 //USER-MATCHING REGEXPS---------------------
 var findUsrInArrayRE = RegExp(/<@\w*?>/);
 var getHashFromUsrRE = RegExp(/\w+/);
+var findUsrsInTextRE = RegExp(/<@\w*?>/g);
+var fileNames = fs.readdirSync('img');
+
+//PRIVATE FUNCTIONS-----------------------
 
 function replaceUsers(bot, message) {
   var users = message.match.filter(m => (findUsrInArrayRE.test(m)));
@@ -99,8 +109,8 @@ function replaceUsers(bot, message) {
     return message;
   }
 };
-function uploadMatchedImage(bot, message) {
-  getFile(message).map(function(image) {
+function uploadMatchedFile(bot, message) {
+  getMatchedFile(message).map(function(image) {
     if (image) {
       let slackUpload = new SU(getSlackToken(message.team));
       slackUpload.uploadFile({
@@ -120,11 +130,10 @@ function uploadMatchedImage(bot, message) {
     }
   });
 };
-function getFile(message) {
-  var images = fs.readdirSync('img');
+function getMatchedFile(message) {
   var matches = message.match;
   message.match = message.match.map((item) => (item.toLowerCase()));
-  return images.map(function(image) {
+  return fileNames.map(function(image) {
     let catchedImgName = image.replace(/_/g, ' ').split('.');
     for (var j = 0; j < matches.length; j++) {
       if (catchedImgName[0] && catchedImgName[0] === matches[j]) {
@@ -184,3 +193,15 @@ function getFileFromURL(mesageInfo, fileInfo) {
       .pipe(fs.createWriteStream('img/' + mesageInfo.trigger.replace(/ /g, '_') + '.' + fileInfo.data.file.name.split('.')[1]))
   })
 }
+//WATCHIG FOR CHANGES ON img/ FOLDER-----------------
+function getMatchArray() {
+  var arr = [];
+  fileNames.map((img) => {
+    if (img.split('.')[0]) {
+      arr.push(RegExp(img.replace(/_/g, ' ').split('.')[0],'i'));
+    }
+  });
+  arr.push(findUsrsInTextRE);
+  arr.push('.*');
+  return arr;
+};

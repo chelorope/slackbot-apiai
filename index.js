@@ -4,10 +4,6 @@ const Botkit = require('botkit');
 const apiaibotkit = require('api-ai-botkit');
 const ai = require('apiai');
 const env = require('./env.json');
-const fs = require('fs');
-const chokidar = require('chokidar');
-const request = require('request');
-var SU = require('node-slack-upload');
 const A = require('./apiai.js');
 const S = require('./slack.js');
 
@@ -21,12 +17,11 @@ var controllerSlack = Botkit.slackbot({
 controllerSlack.spawn({
   token: env.slack.USER_TOKEN,
 }).startRTM()
-// controllerSlack.spawn({
-//   token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
-// }).startRTM()
+controllerSlack.spawn({
+  token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
+}).startRTM()
 
 var Slack = new S(controllerSlack);
-Slack.setMatchArray(getMatchArray());
 Slack.startHearing(botApiAi.process);
 Slack.addEventListener('file_shared', function(bot, message) {
   Slack.getSharedFile(bot, message, function(fileInfo) {
@@ -58,36 +53,6 @@ botApiAi.action('newTriggerImage', function (message, resp, bot) {
 botApiAi.all(function(message, resp, bot) {
   Slack.sendToConversation(message, resp.result.fulfillment.speech, bot);
 })
-
-//WATCHIG FOR CHANGES ON img/ FOLDER-----------------
-var findUsrsInTextRE = RegExp(/<@\w*?>/g);
-function getMatchArray() {
-  var arr = [];
-  fs.readdirSync('img').map((img) => {
-    if (img.split('.')[0]) {
-      arr.push(RegExp(img.replace(/_/g, ' ').split('.')[0],'i'));
-    }
-  });
-  arr.push(findUsrsInTextRE);
-  arr.push('.*');
-  return arr;
-};
-chokidar.watch('img', { persistent: true })
-  .on('change', function(path) {
-    console.log('img/ folder has changed');
-    Slack.setMatchArray(getMatchArray());
-  })
-
-
-
-
-
-
-
-
-
-
-
 
   // botApiAi.action('calendar.get', function (message, resp, bot) {
   //     Calendar.listEvents();

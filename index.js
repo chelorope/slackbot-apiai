@@ -69,50 +69,51 @@ botApiAi.action('calendar.get', function (message, resp, bot) {
     bot.reply(message, responseText);
 });
 
-var sendTo = {
+var reminderData = {
   mail: [],
-  slackId: []
+  slackId: [],
+  body: '',
+  reset() {this.mail = []; this.slackId = []; this.body = ''}
 };
-var body = '';
 botApiAi.action('reminder', function (message, resp, bot) {
-  let contexts = resp.result.contexts;
-  if (contexts.length > 0) {
-    switch (contexts[contexts.length - 1].name.replace('reminder_dialog_params_', '')) {
-      case 'any':
+    switch (resp.result.parameters.action) {
+      case 'reminderStart':
         if (message.matchedUsers !== []) {
           message.matchedUsers.map((usr) => {
             console.log('USER:   ' ,usr);
-            sendTo.mail.push(usr.profile.email);
-            sendTo.slackId.push(usr.imChannel);
+            reminderData.mail.push(usr.profile.email);
+            reminderData.slackId.push(usr.imChannel);
           })
         }
-        console.log('ANY:  ', sendTo);       //DELETE
+        console.log('ANY:  ', reminderData);       //DELETE
         break;
-      case 'remindertype':
-        body = resp.result.parameters.any;
-        console.log('REMINDERTYPE:  ', body);       //DELETE
+      case 'reminderBody':
+        reminderData.body = resp.result.parameters.body;
+        console.log('REMINDERTYPE:  ', reminderData.body);       //DELETE
+        break;
+      case 'reminderType':
+        if (resp.result.parameters.reminderType === 'email') {
+          console.log('PARAMETERS:   ', reminderData, '  ', reminderData.body);            //DELETE
+          Gmail.sendMessage('me', Gmail.makeBody(
+            reminderData.mail.join(','),
+            'marcelo.rodriguez@jam3.com',
+            'Reminder',
+            reminderData.body
+          ));
+          reminderData.reset();
+        }else if (resp.result.parameters.reminderType === 'message') {
+          console.log('ENTRA MSG');
+          reminderData.slackId.map((id) => {
+            bot.say({
+              text: reminderData.body,
+              channel: id
+            })
+            console.log('MESSAGE SENT:   ', reminderData.body, id);
+          })
+          reminderData.reset();
+        }
         break;
     }
-  }else if (resp.result.parameters.reminderType === 'email') {
-    console.log('PARAMETERS:   ', sendTo, '  ', body);            //DELETE
-    let mail = Gmail.makeBody(sendTo.mail.join(','), 'marcelo.rodriguez@jam3.com', 'Reminder', body);
-    Gmail.sendMessage('me', mail);
-    sendTo.mail = [];
-    sendTo.slackId = [];
-    body = '';
-  }else if (resp.result.parameters.reminderType === 'message') {
-    console.log('ENTRA MSG');
-    sendTo.slackId.map((id) => {
-      bot.say({
-        text: body,
-        channel: id
-      })
-      console.log('MESSAGE SENT:   ', body, id);
-    })
-    sendTo.mail = [];
-    sendTo.slackId = [];
-    body = '';
-  }
 });
 
 

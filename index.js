@@ -1,5 +1,10 @@
 "use strict";
 // const {Wit, log} = require('node-wit');
+const cal = require('./calendar.js');
+var Calendar = new cal;
+const mail = require('./gmail.js');
+var Gmail = new mail;
+
 const Botkit = require('botkit');
 const apiaibotkit = require('api-ai-botkit');
 const ai = require('apiai');
@@ -37,6 +42,10 @@ Slack.addEventListener('file_shared', function(bot, message) {
   });
 })
 
+botApiAi.all(function(message, resp, bot) {
+  Slack.sendToConversation(message, resp.result.fulfillment.speech, bot);
+})
+
 botApiAi.action('newTriggerImage', function (message, resp, bot) {
   let contexts = resp.result.contexts;
   // console.log(resp.result); // DELETE
@@ -50,18 +59,63 @@ botApiAi.action('newTriggerImage', function (message, resp, bot) {
   }
 });
 
-botApiAi.all(function(message, resp, bot) {
-  Slack.sendToConversation(message, resp.result.fulfillment.speech, bot);
-})
+botApiAi.action('calendar.get', function (message, resp, bot) {
+    // Calendar.listEvents();
+    // Gmail.listLabels();
+    var mail = Gmail.makeBody('chelor89@gmail.com', 'marcelo.rodriguez@jam3.com', 'Subject', 'Hello!');
+    Gmail.sendMessage('me', mail)
 
-  // botApiAi.action('calendar.get', function (message, resp, bot) {
-  //     Calendar.listEvents();
-  //     var responseText = resp.result.fulfillment.speech;
-  //     bot.reply(message, responseText);
-  // });
+    var responseText = resp.result.fulfillment.speech;
+    bot.reply(message, responseText);
+});
 
-// const cal = require('./calendar.js');
-// var Calendar = new cal;
+var sendTo = {
+  mail: [],
+  slackId: []
+};
+var body = '';
+botApiAi.action('reminder', function (message, resp, bot) {
+  let contexts = resp.result.contexts;
+  if (contexts.length > 0) {
+    switch (contexts[contexts.length - 1].name.replace('reminder_dialog_params_', '')) {
+      case 'any':
+        if (message.matchedUsers !== []) {
+          message.matchedUsers.map((usr) => {
+            console.log('USER:   ' ,usr);
+            sendTo.mail.push(usr.profile.email);
+            sendTo.slackId.push(usr.imChannel);
+          })
+        }
+        console.log('ANY:  ', sendTo);       //DELETE
+        break;
+      case 'remindertype':
+        body = resp.result.parameters.any;
+        console.log('REMINDERTYPE:  ', body);       //DELETE
+        break;
+    }
+  }else if (resp.result.parameters.reminderType === 'email') {
+    console.log('PARAMETERS:   ', sendTo, '  ', body);            //DELETE
+    let mail = Gmail.makeBody(sendTo.mail.join(','), 'marcelo.rodriguez@jam3.com', 'Reminder', body);
+    Gmail.sendMessage('me', mail);
+    sendTo.mail = [];
+    sendTo.slackId = [];
+    body = '';
+  }else if (resp.result.parameters.reminderType === 'message') {
+    console.log('ENTRA MSG');
+    sendTo.slackId.map((id) => {
+      bot.say({
+        text: body,
+        channel: id
+      })
+      console.log('MESSAGE SENT:   ', body, id);
+    })
+    sendTo.mail = [];
+    sendTo.slackId = [];
+    body = '';
+  }
+});
+
+
 // const express = require('express');
 // //BOTKIT--------------
 // //MESSENGER BOTKIT-----------------------

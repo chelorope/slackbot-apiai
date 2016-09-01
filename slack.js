@@ -10,29 +10,58 @@ var SU = require('node-slack-upload');
 class Slack {
 
   constructor(controller) {
-    this.controllerSlack = controller;
+    this.controller = controller;
     this.waitingForFile = new Map();
-    this.matchArray = getMatchArray();
+    this.matches = {
+      images: getImageMatchArray(),
+      extra: [/<@\w*?>/g, /.*/],
+      all: '',
+      generate() {this.all = this.images.concat(this.extra)}
+    }
+    this.matches.generate();
 
     chokidar.watch('img/', { persistent: true })
       .on('change', function(path) {
         console.log('img/ folder has changed');
         fileNames = fs.readdirSync('img');
-        this.matchArray = getMatchArray();
-      })
+        this.matches.images = getImageMatchArray();
+        this.matches.generate();
+        console.log(this.matches.all);
+      }.bind(this))
   }
   addEventListener(evnt, callback) {
-    this.controllerSlack.on(evnt, callback);
+    this.controller.on(evnt, callback);
   }
   startHearing(messageHandler) {
-    this.controllerSlack.hears(
-      this.matchArray,
+    this.controller.hears(
+      '',
       ['direct_message','direct_mention','mention','ambient'],
-      function(bot,message) {
+      function middleware(params, message) {
+        var tests = this.matches.all;
+        var test, match = '';
+        for (var t = 0; t < tests.length; t++) {
+          if (message.text) {
+            test = tests[t];
+            match = message.text.match(test);
+            if (match) {
+              message.match = match;
+              return true;
+            }
+          }
+        }
+        return false;
+      }.bind(this),
+      function callBack(bot,message) {
         uploadMatchedFile(bot, message);
         if (message.event !== "ambient") {
-          message = replaceUsers(bot, message);
-          messageHandler(message, bot);
+          replaceUsers(bot, message)
+            .then(function(message) {
+              messageHandler(message, bot);
+            })
+            .catch(function(message) {
+              messageHandler(message, bot);
+            })
+
         }
       }.bind(this)
     );
@@ -79,35 +108,40 @@ module.exports = Slack;
 //USER-MATCHING REGEXPS---------------------
 var findUsrInArrayRE = RegExp(/<@\w*?>/);
 var getHashFromUsrRE = RegExp(/\w+/);
-var findUsrsInTextRE = RegExp(/<@\w*?>/g);
 var fileNames = fs.readdirSync('img');
 
 //PRIVATE FUNCTIONS-----------------------
 
 function replaceUsers(bot, message) {
+  message.matchedUsers = [];
   var users = message.match.filter(m => (findUsrInArrayRE.test(m)));
-  if (users.length > 0) {
-    //Translates the matched hash into a name
-    let usrPromises = users.map((usr) => (
-      requestUserName(usr.match(getHashFromUsrRE)[0], bot)
-    ));
-    //Resolves all promises after the last one arrives
-    Promise.all(usrPromises)
-      .then(function(result) {
-        result.map(function(item) {
-          message.text = message.text.replace(
-            RegExp('<@' + item.hash + '>'),
-            item.data.user.name
-          );
-        });
-        return message;
-      })
-      .catch(function(err) {
-        console.log(err)
-      })
-  }else {
-    return message;
-  }
+  return new Promise(function(resolve, reject) {
+    if (users.length > 0) {
+      //Translates the matched hash into a name
+      let usrPromises = users.map((usr) => (
+        requestUserInfo(usr.match(getHashFromUsrRE)[0], bot)
+      ));
+      //Resolves all promises after the last one arrives
+      Promise.all(usrPromises)
+        .then(function(result) {
+          result.map(function(item) {
+            let user = item.data.user;
+            user.name = user.name.charAt(0).toUpperCase() + user.name.slice(1);
+            message.matchedUsers.push(user);
+            message.text = message.text.replace(
+              RegExp('<@' + item.hash + '>'),
+              user.name
+            );
+          });
+          resolve(message);
+        })
+        .catch(function(err) {
+          console.log(err);
+        })
+    }else {
+      reject(message);
+    }
+  })
 };
 function uploadMatchedFile(bot, message) {
   getMatchedFile(message).map(function(image) {
@@ -131,8 +165,8 @@ function uploadMatchedFile(bot, message) {
   });
 };
 function getMatchedFile(message) {
-  var matches = message.match;
-  message.match = message.match.map((item) => (item.toLowerCase()));
+  console.log(message.match);
+  var matches = message.match.map((item) => (item.toLowerCase()));
   return fileNames.map(function(image) {
     let catchedImgName = image.replace(/_/g, ' ').split('.');
     for (var j = 0; j < matches.length; j++) {
@@ -157,13 +191,30 @@ function getSlackToken(teamName) {
       break;
   }
 };
-function requestUserName(hash, bot) {
+//Gets the direct messages channel id with a user
+function getUserImChannelId(user, bot) {
   return new Promise(function(resolve, reject) {
-    bot.api.users.info({user: hash}, function(err, response) {
+    bot.api.im.open({user: user, return_im: true}, function(err, response) {
+      if (err) {
+        console.log(err);
+      }else {
+        resolve(response.channel.id)
+      }
+    })
+  })
+}
+function requestUserInfo(userId, bot) {
+  // console.log('userId:   ', userId);                          //DELETE
+  return new Promise(function(resolve, reject) {
+    bot.api.users.info({user: userId}, function(err, response) {
       if(err) {
         reject(err);
       }else {
-        resolve({hash: hash, data: response});
+        getUserImChannelId(userId, bot)
+          .then(function(channelId) {
+            response.user.imChannel = channelId;
+            resolve({hash: userId, data: response});
+          })
       }
     });
   })
@@ -194,14 +245,12 @@ function getFileFromURL(mesageInfo, fileInfo) {
   })
 }
 //WATCHIG FOR CHANGES ON img/ FOLDER-----------------
-function getMatchArray() {
+function getImageMatchArray() {
   var arr = [];
   fileNames.map((img) => {
     if (img.split('.')[0]) {
       arr.push(RegExp(img.replace(/_/g, ' ').split('.')[0],'i'));
     }
   });
-  arr.push(findUsrsInTextRE);
-  arr.push('.*');
   return arr;
 };

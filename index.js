@@ -1,20 +1,21 @@
 "use strict";
 // const {Wit, log} = require('node-wit');
-const cal = require('./calendar.js');
+const cal = require('./components/Google/calendar.js');
 var Calendar = new cal;
-const mail = require('./gmail.js');
+const mail = require('./components/Google/gmail.js');
 var Gmail = new mail;
 
 const Botkit = require('botkit');
 const apiaibotkit = require('api-ai-botkit');
-const ai = require('apiai');
+const ai = require('./components/apiai.js');
 const env = require('./env.json');
-const A = require('./apiai.js');
-const S = require('./slack.js');
+const A = require('./components/apiai.js');
+const S = require('./components/slack.js');
 
 
 //API.AI---------------
-const botApiAi = apiaibotkit(env.apiai.USER_TOKEN);
+const apiai = apiaibotkit(env.apiai.USER_TOKEN);
+var botApiAi = new ai(apiai);
 var controllerSlack = Botkit.slackbot({
   debug: false //or from 1 to 7 for debuging
 });
@@ -27,7 +28,9 @@ controllerSlack.spawn({
 }).startRTM()
 
 var Slack = new S(controllerSlack);
-Slack.startHearing(botApiAi.process);
+Slack.startHearing(function(message, bot) {
+  botApiAi.process(message, bot);
+});
 Slack.addEventListener('file_shared', function(bot, message) {
   Slack.getSharedFile(bot, message, function(fileInfo) {
     let auxMessage = {
@@ -60,13 +63,11 @@ botApiAi.action('newTriggerImage', function (message, resp, bot) {
 });
 
 botApiAi.action('calendar.get', function (message, resp, bot) {
-    // Calendar.listEvents();
-    // Gmail.listLabels();
-    var mail = Gmail.makeBody('chelor89@gmail.com', 'marcelo.rodriguez@jam3.com', 'Subject', 'Hello!');
-    Gmail.sendMessage('me', mail)
+    Calendar.listEvents();
+});
 
-    var responseText = resp.result.fulfillment.speech;
-    bot.reply(message, responseText);
+botApiAi.action('events.get', function (message, resp, bot) {
+    Calendar.listEvents();
 });
 
 var reminderData = {
@@ -102,7 +103,7 @@ botApiAi.action('reminder', function (message, resp, bot) {
           ));
           reminderData.reset();
         }else if (resp.result.parameters.reminderType === 'message') {
-          console.log('ENTRA MSG');
+          console.log('ENTRA MSG');            //DELETE
           reminderData.slackId.map((id) => {
             bot.say({
               text: reminderData.body,

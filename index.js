@@ -7,27 +7,27 @@ var Gmail = new mail;
 
 const Botkit = require('botkit');
 const apiaibotkit = require('api-ai-botkit');
-const ai = require('./components/apiai.js');
 const env = require('./env.json');
-const A = require('./components/apiai.js');
-const S = require('./components/slack.js');
+const Ai = require('./components/apiai.js');
+const Slk = require('./components/slack.js');
 
 
 //API.AI---------------
 const apiai = apiaibotkit(env.apiai.USER_TOKEN);
-var botApiAi = new ai(apiai);
+var botApiAi = new Ai(apiai);
 var controllerSlack = Botkit.slackbot({
-  debug: false //or from 1 to 7 for debuging
+  debug: false, //or from 1 to 7 for debuging
+  json_file_store: './store'
 });
 // connect the bot to a stream of messages
 controllerSlack.spawn({
-  token: env.slack.USER_TOKEN,
+  token: env.slack.USER_TOKEN_Test,
 }).startRTM()
 controllerSlack.spawn({
-  token: env.slack.USER_TOKEN1,                  //CHANGE TOKEN ----------
+  token: env.slack.USER_TOKEN_Jam,                  //CHANGE TOKEN ----------
 }).startRTM()
 
-var Slack = new S(controllerSlack);
+var Slack = new Slk(controllerSlack);
 Slack.startHearing(function(message, bot) {
   botApiAi.process(message, bot);
 });
@@ -46,7 +46,7 @@ Slack.addEventListener('file_shared', function(bot, message) {
 })
 
 botApiAi.all(function(message, resp, bot) {
-  Slack.sendToConversation(message, resp.result.fulfillment.speech, bot);
+  Slack.reply(message, resp.result.fulfillment.speech, bot);
 })
 
 botApiAi.action('newTriggerImage', function (message, resp, bot) {
@@ -66,9 +66,93 @@ botApiAi.action('calendar.get', function (message, resp, bot) {
     Calendar.listEvents();
 });
 
-botApiAi.action('events.get', function (message, resp, bot) {
-    Calendar.listEvents();
+botApiAi.action('events.list', function (message, resp, bot) {
+  Slack.getUserInfo(message.user, bot)
+    .then(function(user) {
+      var obj = {};
+      var params = resp.result.parameters;
+      var dateAnswer = '';
+      var dateFound = true;
+      if (params.date) {
+        if (params.date === 'next' || params.date === 'Next') {
+          let actDate = new Date();
+          let nextDate = new Date();
+          nextDate.setFullYear(actDate.getFullYear() + 1);
+          obj = {
+            email: user.profile.email,
+            timeMin: actDate.toISOString(),
+            timeMax: nextDate.toISOString(),
+            maxResults: (params.number || 1)
+            }
+            dateAnswer = '';
+        }else {
+          dateAnswer = ' for ' + params.date;
+          obj = {
+            email: user.profile.email,
+            timeMin: params.date + 'T00:00:00Z',
+            timeMax: params.date + 'T23:59:59Z',
+            maxResults: 10
+            }
+        }
+      }else if(params['date-period']) {
+        let period = params['date-period'].split('/');
+        dateAnswer = ' between ' + period[0] + ' and ' + period[1];
+        obj = {
+          email: user.profile.email,
+          timeMin: period[0] + 'T00:00:00Z',
+          timeMax: period[1] + 'T23:59:59Z',
+          maxResults: 20
+          }
+      }else if(params['date-time']) {
+        dateAnswer = ' for ' + params['date-time'];
+        obj = {
+          email: user.profile.email,
+          timeMin: params['date-time'],
+          timeMax: params['date-time'],
+          maxResults: 10
+          }
+      }else {
+        dateFound = false;
+        Slack.reply(message, 'Try again but this time with an specific date or period of time', bot);
+      }
+      if (dateFound) {
+        Calendar.listEvents(obj)
+          .then(function(ev) {
+            let events = ev.items;
+            if (events.length == 0) {
+              Slack.reply(message, 'No events found' + dateAnswer, bot);
+            } else {
+              let answer = (
+                events.length >= obj.maxResults ?
+                'First ' + obj.maxResults + ' events' :
+                'Events found'
+              ) + dateAnswer + ' :\n\n';
+              for (let i = 0; i < events.length; i++) {
+                let event = events[i];
+                let start = (event.start.dateTime || event.start.date).split('T');
+                let end = (event.end.dateTime || event.end.date).split('T');
+                let time = (start[1] && end[1]) ? [start[1].split('-')[0], end[1].split('-')[0]] : [start[0],end[0]];
+                answer += (
+                  'Event ' + (i+1) + ':\n' +
+                  '\tDay: ' + start[0] + '\n' +
+                  '\tFrom ' + time[0] + ' to ' + time[1] + '\n' +
+                  '\t' + event.summary + '\n\n'
+                );
+              }
+              Slack.reply(message, answer, bot);
+            }
+          })
+          .catch(function(err) {
+            throw new Error(err);
+          })
+      }
+    })
+    .catch(function(err) {
+      throw new Error(err);
+    })
+
 });
+
 
 var reminderData = {
   mail: [],
@@ -81,20 +165,20 @@ botApiAi.action('reminder', function (message, resp, bot) {
       case 'reminderStart':
         if (message.matchedUsers !== []) {
           message.matchedUsers.map((usr) => {
-            console.log('USER:   ' ,usr);
+            // console.log('USER:   ' ,usr);               //DELETE
             reminderData.mail.push(usr.profile.email);
             reminderData.slackId.push(usr.imChannel);
           })
         }
-        console.log('ANY:  ', reminderData);       //DELETE
+        // console.log('ANY:  ', reminderData);       //DELETE
         break;
       case 'reminderBody':
         reminderData.body = resp.result.parameters.body;
-        console.log('REMINDERTYPE:  ', reminderData.body);       //DELETE
+        // console.log('REMINDERTYPE:  ', reminderData.body);       //DELETE
         break;
       case 'reminderType':
         if (resp.result.parameters.reminderType === 'email') {
-          console.log('PARAMETERS:   ', reminderData, '  ', reminderData.body);            //DELETE
+          // console.log('PARAMETERS:   ', reminderData, '  ', reminderData.body);            //DELETE
           Gmail.sendMessage('me', Gmail.makeBody(
             reminderData.mail.join(','),
             'marcelo.rodriguez@jam3.com',
@@ -103,13 +187,12 @@ botApiAi.action('reminder', function (message, resp, bot) {
           ));
           reminderData.reset();
         }else if (resp.result.parameters.reminderType === 'message') {
-          console.log('ENTRA MSG');            //DELETE
           reminderData.slackId.map((id) => {
             bot.say({
               text: reminderData.body,
               channel: id
             })
-            console.log('MESSAGE SENT:   ', reminderData.body, id);
+            // console.log('MESSAGE SENT:   ', reminderData.body, id);     //DELETE
           })
           reminderData.reset();
         }

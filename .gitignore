@@ -42,3 +42,8 @@ client_secret.json
 
 #imges
 img/*.*
+
+#store
+store/users/*.*
+store/channels/*.*
+store/teams/*.*

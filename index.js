@@ -51,7 +51,6 @@ botApiAi.all(function(message, resp, bot) {
 
 botApiAi.action('newTriggerImage', function (message, resp, bot) {
   let contexts = resp.result.contexts;
-  // console.log(resp.result); // DELETE
   if (contexts.length > 0 && contexts[contexts.length - 1].name === "upload-image_dialog_params_image-uploaded") {
     Slack.addWaitingForFile(message.user, {
       trigger: resp.result.resolvedQuery.toLowerCase(),
@@ -72,14 +71,20 @@ botApiAi.action('events.list', function (message, resp, bot) {
       var obj = {};
       var params = resp.result.parameters;
       var dateAnswer = '';
+      var otherUserAnswer = '';
       var dateFound = true;
+      var calendarId = '';
+      if (params['given-name']) {
+        calendarId = message.matchedUsers[0].profile.email;
+        otherUserAnswer = '  (' + message.matchedUsers[0].real_name + ')';
+      }
       if (params.date) {
         if (params.date === 'next' || params.date === 'Next') {
           let actDate = new Date();
           let nextDate = new Date();
           nextDate.setFullYear(actDate.getFullYear() + 1);
           obj = {
-            email: user.profile.email,
+            email: (calendarId || user.profile.email),
             timeMin: actDate.toISOString(),
             timeMax: nextDate.toISOString(),
             maxResults: (params.number || 1)
@@ -88,25 +93,25 @@ botApiAi.action('events.list', function (message, resp, bot) {
         }else {
           dateAnswer = ' for ' + params.date;
           obj = {
-            email: user.profile.email,
+            email: (calendarId || user.profile.email),
             timeMin: params.date + 'T00:00:00Z',
             timeMax: params.date + 'T23:59:59Z',
-            maxResults: 10
+            maxResults: 20
             }
         }
       }else if(params['date-period']) {
         let period = params['date-period'].split('/');
         dateAnswer = ' between ' + period[0] + ' and ' + period[1];
         obj = {
-          email: user.profile.email,
+          email: (calendarId || user.profile.email),
           timeMin: period[0] + 'T00:00:00Z',
           timeMax: period[1] + 'T23:59:59Z',
-          maxResults: 20
+          maxResults: 30
           }
       }else if(params['date-time']) {
         dateAnswer = ' for ' + params['date-time'];
         obj = {
-          email: user.profile.email,
+          email: (calendarId || user.profile.email),
           timeMin: params['date-time'],
           timeMax: params['date-time'],
           maxResults: 10
@@ -126,7 +131,7 @@ botApiAi.action('events.list', function (message, resp, bot) {
                 events.length >= obj.maxResults ?
                 'First ' + obj.maxResults + ' events' :
                 'Events found'
-              ) + dateAnswer + ' :\n\n';
+              ) + dateAnswer  + otherUserAnswer + ' :\n\n';
               for (let i = 0; i < events.length; i++) {
                 let event = events[i];
                 let start = (event.start.dateTime || event.start.date).split('T');

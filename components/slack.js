@@ -82,6 +82,7 @@ class Slack {
         .then(function(fileInfo) {
           getFileFromURL(queuedObj, fileInfo, bot)
             .then(function(obj){
+              this.matches.images.push(queuedObj);
               callBack(obj);
             })
             .catch(function(err) {

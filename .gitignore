@@ -43,6 +43,9 @@ client_secret.json
 #imges
 img/*.*
 
+#entities
+components/apiai/entities/*.*
+
 #store
 store/users/*.*
 store/channels/*.*

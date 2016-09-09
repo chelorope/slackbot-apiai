@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "database": "node store/saveUsers.js"
+    "database": "node scripts/refreshUsers.js"
   },
   "repository": {
     "type": "git",
@@ -22,7 +22,9 @@
   "homepage": "https://github.com/chelorope/slackbot-apiai#readme",
   "dependencies": {
     "@slack/client": "^3.5.4",
+    "api-ai": "0.0.7",
     "api-ai-botkit": "^1.0.3",
+    "apiai": "^2.0.7",
     "botkit": "^0.2.2",
     "btoa": "^1.1.2",
     "chokidar": "^1.6.0",

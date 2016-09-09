@@ -8,7 +8,7 @@ var Gmail = new mail;
 const Botkit = require('botkit');
 const apiaibotkit = require('api-ai-botkit');
 const env = require('./env.json');
-const Ai = require('./components/apiai.js');
+const Ai = require('./components/apiai/apiai.js');
 const Slk = require('./components/slack.js');
 
 
